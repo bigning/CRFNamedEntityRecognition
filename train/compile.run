@@ -1,1 +1,2 @@
-g++ -O3 train.cpp util.cpp -o train
+g++ -O3 feature_extractor.cpp util.cpp feature_selection.cpp -o feature_selection.bin
+g++ -O3 train.cpp util.cpp -o train.bin

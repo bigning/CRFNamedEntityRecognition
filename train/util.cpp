@@ -23,3 +23,13 @@ double weight_time_feature(std::vector<double>& weights, SparseVector& feature) 
     }
     return res;
 }
+
+void to_lowercase(std::string& input, std::string& output) {
+    for (int i = 0; i < input.size(); i++) {
+        if (input[i] >= 'A' && input[i] <= 'Z') {
+            output[i] = input[i] + 32;
+        } else {
+            output[i] = input[i];
+        }
+    }
+}
