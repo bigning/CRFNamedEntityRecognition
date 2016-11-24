@@ -1,0 +1,1 @@
+g++ -O3 train.cpp util.cpp -o train
