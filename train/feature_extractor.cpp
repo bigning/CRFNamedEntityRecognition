@@ -97,6 +97,7 @@ void FeatureExtractor::load_words() {
     words_input_file.close();
     word2ind_["<start>"] = word_ind++;
     word2ind_["<rare_word>"] = word_ind++;
+    word2ind_["<stop>"] = word_ind++;
     dict_size_ = word_ind;
 }
 
@@ -150,7 +151,7 @@ void FeatureExtractor::get_selected_feature_index() {
         tags2lable_data(label_line, label);
         
         std::vector<int> feature;
-        for (int i = 1; i < data.size(); i++) {
+        for (int i = 1; i < data.size() - 1; i++) {
             extract_original_feature(i, label[i], label[i - 1], data, feature);
             if (feature_sum.size() == 0) {
                 feature_sum = feature;
@@ -184,7 +185,8 @@ void FeatureExtractor::get_selected_feature_index() {
 }
 
 void FeatureExtractor::sentence2input_data(std::string& sentence, vector<string>& data) {
-    sentence = "<start> " + sentence;
+    data.clear();
+    sentence = "<start> " + sentence + " <stop>";
     std::istringstream iss(sentence);
     std::string tmp_data;
     while (iss >> tmp_data) {
@@ -193,7 +195,8 @@ void FeatureExtractor::sentence2input_data(std::string& sentence, vector<string>
 }
 
 void FeatureExtractor::tags2lable_data(std::string& tags, vector<int>& label) {
-    tags = "O " + tags;
+    label.clear();
+    tags = "O " + tags + " O";
     std::istringstream iss(tags);
     std::string tmp_str;
     while (iss >> tmp_str) {

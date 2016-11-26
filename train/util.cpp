@@ -1,5 +1,5 @@
 #include "util.h"
-#include <math.h>
+#include <cmath>
 
 double log_sum(double a, double b) {
     if (a < b) {

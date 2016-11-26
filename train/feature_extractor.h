@@ -35,6 +35,9 @@ public:
      * */
     void tags2lable_data(std::string& tags, vector<int>& label);
 
+    int selected_feature_size() {return selected_feature_size_;}
+    const std::map<std::string, int>& label_map() { return label_map_;}
+
 private:
     std::string train_data_filename_; 
     std::string lexicon_filename_;

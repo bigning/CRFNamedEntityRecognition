@@ -4,54 +4,83 @@
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
+#include <cstring>
+#include <cmath>
+
+using std::vector;
+using std::string;
 
 Trainer::Trainer() {
-    train_data_file_ = "../../data/intermedia_data/feature.train";
+    train_data_file_ = "../../data/ner/eng.train.new";
     train_num_ = 0;
     feature_length_ = 0;
+    p_feature_extractor_ = new FeatureExtractor();
+    feature_length_ = p_feature_extractor_->selected_feature_size();
+    classes_ = p_feature_extractor_->label_map().size();
+
+    // sgd parameter
+    iter_ = 100;
+    regularization_weight_ = 0;
+    learning_rate_ = 0.1;
+
+    // helper
+    original_feature_ = new double[feature_length_];
+
+    // debug
+    sum_abs_weights = 0;
+    sum_abs_grads = 0;
+}
+
+Trainer::~Trainer() {
+    if (original_feature_ != NULL) {
+        delete[] original_feature_;
+    }
 }
 
 void Trainer::load_train_data() {
     int max_non_zero_index = 0;
 
     std::ifstream train_data_file(train_data_file_.c_str());
-    std::string line;
-    int tmp_label = 0;
-    int tmp_ind = 0;
-    SparseVector tmp_data;
-    std::vector<SparseVector> sentence_data;
-    std::vector<int> sentence_label;
-    while (std::getline(train_data_file, line)) {
-        if (line.size() == 0) {
-            sentence_data.clear();
-            sentence_label.clear();
+    std::string data_line;
+    std::string tag_line;
+    std::string empty_line;
+    while (std::getline(train_data_file, data_line)) {
+        std::getline(train_data_file, tag_line);
+        std::getline(train_data_file, empty_line);
 
-            train_data_.push_back(DataLabel(sentence_data, sentence_label));
-            train_num_++;
-
-            if (sentence_data.size() != sentence_label.size()) {
-                std::cout << "[ERROR]: label.size() != data.size()" << std::endl;
-                exit(-1);
-            }
-            continue;
+        std::vector<std::string> data;
+        std::vector<int> label;
+        SparseVector token_feature;
+        
+        p_feature_extractor_->sentence2input_data(data_line, data); 
+        p_feature_extractor_->tags2lable_data(tag_line, label);
+        vector<vector<vector<SparseVector> > > features;
+        extract_features(data, features);
+        train_data_.push_back(DataLabel(data, label, features));
+        train_num_++;
+        if (train_num_ % 100 == 0) {
+            std::cout << "[INFO]: computing training feature: " << train_num_ << 
+                std::endl;
+            break;
         }
-        std::istringstream iss(line);
-        iss >> tmp_label;
-        tmp_data.clear();
-        while (iss >> tmp_ind) {
-            tmp_data.push_back(tmp_ind);
-            //std::cout << tmp_ind << " ";
-            if (tmp_ind > max_non_zero_index) {
-                max_non_zero_index = tmp_ind;
-            }
-        }
-
-        sentence_label.push_back(tmp_label);
-        sentence_data.push_back(tmp_data);
     }
-
     train_data_file.close();
-    feature_length_ = max_non_zero_index + 1;
+}
+
+void Trainer::extract_features(vector<std::string>& data, 
+        vector<vector<vector<SparseVector> > >& features) {
+    features = vector<vector<vector<SparseVector> > >(data.size(), 
+            vector<vector<SparseVector> >(classes_, vector<SparseVector>(
+                    classes_)));
+
+    for (int t = 1; t < data.size() - 1; t++) {
+        for (int i = 0; i < classes_; i++) {
+            for (int j = 0; j < classes_; j++) {
+                p_feature_extractor_->extract_feature(t, i, j, data, 
+                        features[t][i][j]);
+            }
+        }
+    }
 }
 
 void Trainer::weight_initialization() {
@@ -64,10 +93,185 @@ void Trainer::weight_initialization() {
     gradients_ = std::vector<double>(feature_length_, 0.0);
 }
 
-void Trainer::cal_log_alpha(int i) {
+void Trainer::cal_log_alpha(int i, std::vector<std::vector<double> >& log_alpha) {
     DataLabel& data_label = train_data_[i];
-    int T = data_label.label.size();
-    double log_alpha_1 = 0;
+    int T = data_label.label.size() - 2;
+     log_alpha = std::vector<std::vector<double> >(data_label.data.size(),
+            std::vector<double>(classes_, -1.0));
+
+    // log_alpha_1_j
+    for (int j = 0; j < classes_; j++) {
+        SparseVector& feature = data_label.features[1][j][data_label.label[0]];
+        log_alpha[1][j] = weight_time_feature(weights_, feature);
+    }
+
+    for (int t = 2; t <= T; t++) {
+        for (int j = 0; j < classes_; j++) {
+            double tmp_sum = 0;
+            // i = 0
+            // log(fai(j, i=0, xt)) + log(alpha_t-1_i). ref: notes P2
+            SparseVector& tmp_feature = data_label.features[t][j][0];
+            tmp_sum = weight_time_feature(weights_, tmp_feature) + 
+                log_alpha[t - 1][0];
+            for (int i = 1; i < classes_; i++) {
+                double tmp_sum_2 = 0;
+                SparseVector& tmp_feature = data_label.features[t][j][i];
+                tmp_sum_2 = weight_time_feature(weights_, tmp_feature) + 
+                    log_alpha[t - 1][i];
+                tmp_sum = log_sum(tmp_sum, tmp_sum_2);
+            }
+            log_alpha[t][j] = tmp_sum;
+        }
+    }
+}
+
+void Trainer::cal_log_beta(int i, std::vector<std::vector<double> >& log_beta) {
+    DataLabel& data_label = train_data_[i];
+    int T = data_label.label.size() - 2;
+
+    log_beta = std::vector<std::vector<double> >(data_label.data.size(), 
+            std::vector<double>(classes_, -1.0));
+    for (int i = 0; i < classes_; i++) {
+        log_beta[T][i] = 0;
+    }
+
+    for (int t = T - 1; t >= 0; t--) {
+        for (int i = 0; i < classes_; i++) {
+            double tmp_sum = 0;
+            // j = 0;
+            // log(fai(j=0, i, xt) + log_beta_t+1_j)
+            SparseVector& tmp_feature = data_label.features[t+1][0][i];
+            tmp_sum = weight_time_feature(weights_, tmp_feature) +
+                log_beta[t+1][0];
+            for (int j = 1; j < classes_; j++) {
+                double tmp_sum_2 = 0;
+                SparseVector& tmp_feature = data_label.features[t+1][j][i];
+                tmp_sum_2 = weight_time_feature(weights_, tmp_feature) + 
+                    log_beta[t+1][j];
+                tmp_sum = log_sum(tmp_sum, tmp_sum_2);
+            }
+            log_beta[t][i] = tmp_sum;
+        }
+    }
+}
+
+void Trainer::train() {
+    for (int i = 0; i < iter_; i++) {
+        double sum_likelihood = 0;
+        for (int j = 0; j < train_num_; j++) {
+            double likelihood = cal_gradients(j);
+            update_weights();
+
+            sum_likelihood += likelihood;
+        }
+        std::cout << "[INFO]: iter " << i << ", avg likelihood: " << 
+            sum_likelihood / (double)train_num_ << std::endl;
+        std::cout << "[INFO]: iter " << i << ", grad/weight: " << sum_abs_grads/sum_abs_weights << std::endl;
+    }
+}
+
+double Trainer::cal_gradients(int i) {
+   DataLabel& data_label = train_data_[i];
+   int T = data_label.data.size() - 2;
+
+   // compute log_z
+   vector<vector<double> > log_alpha;
+   cal_log_alpha(i, log_alpha);
+   vector<vector<double> > log_beta;
+   cal_log_beta(i, log_beta);
+
+   double log_z = 0;
+   /*
+   double log_z_alpha = log_alpha[T][0];
+   for (int i = 1; i < classes_; i++) {
+       log_z_alpha = log_sum(log_z_alpha, log_alpha[T][i]);
+   }
+   */
+   double log_z_beta = (log_beta[0][0]);
+   log_z = log_z_beta;
+
+   // compute P_t(y_t, y_t-1,x) P316
+   vector<vector<vector<double> > > p(data_label.data.size(), vector<vector<double> >(classes_,
+               vector<double>(classes_, 0)));
+   //special case for P_1(y_1, y_0, x), only when y_0 = 0, this value is not zero
+   for (i = 0; i < classes_; i++) {
+       SparseVector& sparse_feature = data_label.features[1][i][0];
+       double tmp1 = weight_time_feature(weights_, sparse_feature);
+       double log_p_1_i_0 = tmp1 + log_beta[1][i] - log_z;
+       p[1][i][0] = exp(log_p_1_i_0);
+   }
+   for (int t = 2; t <= T; t++) {
+       for (int i = 0; i < classes_; i++) {
+           for (int j = 0; j < classes_; j++) {
+               SparseVector& sparse_feature = data_label.features[t][i][j];
+               double log_fai = weight_time_feature(weights_, sparse_feature);
+               double log_p = log_alpha[t - 1][j] + log_fai + log_beta[t][i] - log_z;
+               p[t][i][j] = exp(log_p); 
+           }
+       }
+   }
+
+   // cal gradients
+   double avg_gradients = 0;
+   std::fill(gradients_.begin(), gradients_.end(), 0);
+   for (int k = 0; k < weights_.size(); k++) {
+       double tmp = 0;
+       for (int t = 1; t <= T; t++) {
+           // f_k(y_t, y_t-1, x)
+           bool is_kth_nonzero = false;
+           SparseVector& sparse_feature =
+               data_label.features[t][data_label.label[t]][data_label.label[t - 1]];
+           for (int i = 0; i < sparse_feature.size(); i++) {
+               if (sparse_feature[i] == k) {
+                   is_kth_nonzero = true;
+                   break;
+               }
+           }
+           if (is_kth_nonzero) {
+               tmp += 1;
+           }
+           
+           for (int i = 0; i < classes_; i++) {
+               for (int j = 0; j < classes_; j++) {
+                   SparseVector& sparse_feature= data_label.features[t][i][j];
+                   bool is_kth_nonzero = false;
+                   for (int m = 0; m < sparse_feature.size(); m++) {
+                       if (sparse_feature[m] == k) {
+                           is_kth_nonzero = true;
+                           break;
+                       }
+                   }
+                   if (!is_kth_nonzero) {
+                       continue;
+                   }
+                   tmp -= p[t][i][j];
+               }
+           }
+       }
+       tmp -= 2 * regularization_weight_ * weights_[k];
+       gradients_[k] = tmp;
+       avg_gradients += tmp;
+   }
+   avg_gradients /= (double)(weights_.size());
+
+   // cal likelyhood
+   double l = 0;
+   for (int t = 1; t <= T; t++) {
+       SparseVector& feature = data_label.features[t][data_label.label[t]][data_label.label[t - 1]];
+       l += weight_time_feature(weights_, feature);
+   }
+   l -= log_z;
+   return l;
+}
+
+void Trainer::update_weights() {
+    for (int i = 0; i < weights_.size(); i++) {
+        weights_[i] += learning_rate_ * gradients_[i];
+        if (gradients_[i] > 0.00001 || gradients_[i] < -0.00001) {
+            sum_abs_weights += abs(weights_[i]);
+            sum_abs_grads += abs(gradients_[i]);
+        }
+    }
 }
 
 void Trainer::run() {
@@ -77,6 +281,8 @@ void Trainer::run() {
 
     weight_initialization();
     std::cout << "[INFO]: weights are randomly initialized!" << std::endl << std::endl;
+
+    train();
 }
 
 int main() {
