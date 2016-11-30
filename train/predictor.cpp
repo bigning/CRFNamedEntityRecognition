@@ -149,13 +149,68 @@ void Predictor::batch_predict(const std::string& input_filename) {
     output.close();
 }
 
+void predict_for_php(int argc, char* argv[]) {
+    std::string model = argv[2];
+    Predictor* p_predictor = new Predictor(model);
+    std::string input;
+    std::string special_chars = ".,()\"'-:$/?;[]!";
+    for (int i = 3; i < argc; i++) {
+        bool ini_special = false;
+        bool end_special = false;
+        std::string original_word = argv[i];
+        for (int j = 0; j < special_chars.size(); j++) {
+            if (original_word[0] == special_chars[j]) {
+                ini_special = true;
+            }
+            if (original_word[original_word.size() - 1] == special_chars[j]) {
+                end_special = true;
+            }
+        }
+        if (!ini_special && !end_special) {
+            input += argv[i];
+        }
+        if (ini_special) {
+            input += original_word[0] + " ";
+            for (int j = 1; j < original_word.size(); j++) {
+                input += original_word[j];
+            }
+        }
+        if (end_special) {
+            for (int j = 0; j < original_word.size() - 1; j++) {
+                input += original_word[j];
+            }
+            input += " ";
+            input += original_word[original_word.size() - 1];
+        }
+        if (i != argc - 1) {
+            input += " ";
+        }
+    }
+    std::vector<std::string> res = p_predictor->predict(input);
+    std::string res_str;
+    for (int i = 0; i < res.size(); i++) {
+        res_str += res[i] + " ";
+    }
+    std::cout << input << std::endl << res_str << std::endl;
+
+    delete p_predictor;
+}
+
 int main(int argc, char* argv[]) {
     // ./predictor mode model input
     // e.g. 
     // single test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189
     // batch test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189
     // train/testa/testb
+    // php test: ./predictor php model_file input(I am from China.)
     std::string help_str = "./predictor mode model (input) \nsingle test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189\nbatch test: ./predictor 1 ../../data/intermedia_data/model.data.baseline.8189 train/testa/testb";
+    if (argc >= 4) {
+        std::string mode = argv[1];
+        if (mode == "php") {
+            predict_for_php(argc, argv);
+            return 0;
+        }
+    }
     if (argc == 3) {
         std::string mode = argv[1];
         if (mode != "0") {

@@ -34,6 +34,7 @@ private:
     // theta
     std::vector<double> weights_;
     std::vector<double> gradients_;
+    std::vector<double> delta_weights_;
 
     FeatureExtractor* p_feature_extractor_;
 
@@ -41,6 +42,7 @@ private:
     int iter_;
     double regularization_weight_;
     double learning_rate_;
+    double momentum_;
 
     // helper
     double* original_feature_;

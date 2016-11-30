@@ -20,12 +20,13 @@ Trainer::Trainer() {
     feature_length_ = p_feature_extractor_->selected_feature_size();
     classes_ = p_feature_extractor_->label_map().size();
 
-    train_num_ = 42123;
+    train_num_ = 42123/3;
 
     // sgd parameter
     iter_ = 50;
     regularization_weight_ = 0;
     learning_rate_ = 0.02;
+    momentum_ = 0.9;
 
     // helper
 
@@ -91,6 +92,7 @@ void Trainer::weight_initialization() {
     }
 
     gradients_ = std::vector<double>(feature_length_, 0.0);
+    delta_weights_ = std::vector<double>(feature_length_, 0.0);
 }
 
 void Trainer::cal_log_alpha(int i, std::vector<std::vector<double> >& log_alpha) {
@@ -157,6 +159,7 @@ void Trainer::cal_log_beta(int i, std::vector<std::vector<double> >& log_beta) {
 
 void Trainer::train() {
     int print_every = 500;
+    int learning_rate_decrease_every = 500;
     double sum_likelihood = 0;
     int num = 0;
     std::vector<int> rnd_shuffle(train_num_, 0);
@@ -175,18 +178,19 @@ void Trainer::train() {
             num++; 
 
             if (num % print_every == 0) {
-
-                std::cout << "[INFO]: iter " << i << ", avg likelihood: " << 
-                    sum_likelihood / (double)print_every << std::endl;
-                std::cout << "[INFO]: iter " << i << ", grad/weight: " << sum_abs_grads/sum_abs_weights << std::endl;
+                std::cout << "[INFO]: iter " << i << "."<<j<< ", avg likelihood: " << 
+                    sum_likelihood / (double)print_every << "\t";
+                std::cout <<"grad/weight: " << sum_abs_grads/sum_abs_weights <<
+                    "\tlr: "<< learning_rate_ << std::endl;
                 sum_likelihood = 0;
                 sum_abs_grads = 0;
                 sum_abs_weights = 0;
-
+            }
+            if (num % learning_rate_decrease_every == 0) {
+                learning_rate_ *= 0.985;
             }
         }
         // update learning rate
-        learning_rate_ *= 0.88;
         save_model(i);
     }
 }
@@ -296,7 +300,9 @@ double Trainer::cal_gradients(int i) {
 
 void Trainer::update_weights() {
     for (int i = 0; i < weights_.size(); i++) {
-        weights_[i] += learning_rate_ * gradients_[i];
+        delta_weights_[i] = learning_rate_ * gradients_[i] +
+            momentum_ * delta_weights_[i];
+        weights_[i] += delta_weights_[i];
         if (gradients_[i] > 0.00001 || gradients_[i] < -0.00001) {
             sum_abs_weights += abs(weights_[i]);
             sum_abs_grads += abs(gradients_[i]);
