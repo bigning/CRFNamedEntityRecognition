@@ -1,11 +1,13 @@
 #include "train.h"
 
 #include <fstream>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <ctime>
 
 using std::vector;
 using std::string;
@@ -18,69 +20,67 @@ Trainer::Trainer() {
     feature_length_ = p_feature_extractor_->selected_feature_size();
     classes_ = p_feature_extractor_->label_map().size();
 
+    train_num_ = 42123;
+
     // sgd parameter
-    iter_ = 100;
+    iter_ = 50;
     regularization_weight_ = 0;
-    learning_rate_ = 0.1;
+    learning_rate_ = 0.02;
 
     // helper
-    original_feature_ = new double[feature_length_];
 
     // debug
     sum_abs_weights = 0;
     sum_abs_grads = 0;
+    time_ = 0;
 }
 
 Trainer::~Trainer() {
-    if (original_feature_ != NULL) {
-        delete[] original_feature_;
-    }
 }
 
 void Trainer::load_train_data() {
-    int max_non_zero_index = 0;
+    int ind = 0;
+
+    double time_1 = 0;
+    double time_2 = 0;
+
+    train_data_ = std::vector<DataLabel>(train_num_);
 
     std::ifstream train_data_file(train_data_file_.c_str());
     std::string data_line;
     std::string tag_line;
     std::string empty_line;
+    std::clock_t begin = clock();
     while (std::getline(train_data_file, data_line)) {
         std::getline(train_data_file, tag_line);
         std::getline(train_data_file, empty_line);
 
         std::vector<std::string> data;
         std::vector<int> label;
-        SparseVector token_feature;
         
-        p_feature_extractor_->sentence2input_data(data_line, data); 
-        p_feature_extractor_->tags2lable_data(tag_line, label);
+        p_feature_extractor_->sentence2input_data(data_line, train_data_[ind].data); 
+
+        p_feature_extractor_->tags2lable_data(tag_line, train_data_[ind].label);
+
         vector<vector<vector<SparseVector> > > features;
-        extract_features(data, features);
-        train_data_.push_back(DataLabel(data, label, features));
-        train_num_++;
-        if (train_num_ % 100 == 0) {
-            std::cout << "[INFO]: computing training feature: " << train_num_ << 
-                std::endl;
-            break;
+        p_feature_extractor_->extract_features(train_data_[ind].data,
+                train_data_[ind].features);
+
+        //train_data_[ind] = DataLabel(data, label, features);
+
+        ind++;
+
+        if (ind % 100 == 0) {
+            std::clock_t end = clock();
+            std::cout << "[INFO]: computing training feature: " << ind << " time: "
+                << (double)(end - begin) / CLOCKS_PER_SEC << std::endl;
+            begin = clock();
         }
     }
+    train_num_ = ind;
+    std::clock_t end = clock();
+    std::cout << (double)(end - begin) / CLOCKS_PER_SEC << std::endl;
     train_data_file.close();
-}
-
-void Trainer::extract_features(vector<std::string>& data, 
-        vector<vector<vector<SparseVector> > >& features) {
-    features = vector<vector<vector<SparseVector> > >(data.size(), 
-            vector<vector<SparseVector> >(classes_, vector<SparseVector>(
-                    classes_)));
-
-    for (int t = 1; t < data.size() - 1; t++) {
-        for (int i = 0; i < classes_; i++) {
-            for (int j = 0; j < classes_; j++) {
-                p_feature_extractor_->extract_feature(t, i, j, data, 
-                        features[t][i][j]);
-            }
-        }
-    }
 }
 
 void Trainer::weight_initialization() {
@@ -156,18 +156,48 @@ void Trainer::cal_log_beta(int i, std::vector<std::vector<double> >& log_beta) {
 }
 
 void Trainer::train() {
+    int print_every = 500;
+    double sum_likelihood = 0;
+    int num = 0;
+    std::vector<int> rnd_shuffle(train_num_, 0);
+    for (int i = 0; i < train_num_; i++) {
+        rnd_shuffle[i] = i;
+    }
+
     for (int i = 0; i < iter_; i++) {
-        double sum_likelihood = 0;
+        std::random_shuffle(rnd_shuffle.begin(), rnd_shuffle.end());
         for (int j = 0; j < train_num_; j++) {
-            double likelihood = cal_gradients(j);
+            double likelihood = cal_gradients(rnd_shuffle[j]);
             update_weights();
 
             sum_likelihood += likelihood;
+            
+            num++; 
+
+            if (num % print_every == 0) {
+
+                std::cout << "[INFO]: iter " << i << ", avg likelihood: " << 
+                    sum_likelihood / (double)print_every << std::endl;
+                std::cout << "[INFO]: iter " << i << ", grad/weight: " << sum_abs_grads/sum_abs_weights << std::endl;
+                sum_likelihood = 0;
+                sum_abs_grads = 0;
+                sum_abs_weights = 0;
+
+            }
         }
-        std::cout << "[INFO]: iter " << i << ", avg likelihood: " << 
-            sum_likelihood / (double)train_num_ << std::endl;
-        std::cout << "[INFO]: iter " << i << ", grad/weight: " << sum_abs_grads/sum_abs_weights << std::endl;
+        // update learning rate
+        learning_rate_ *= 0.88;
+        save_model(i);
     }
+}
+
+void Trainer::save_model(int i) {
+    std::ofstream out("../../data/intermedia_data/model.data");
+    out << i << std::endl;
+    for (int i = 0; i < weights_.size(); i++) {
+        out << weights_[i] << " ";
+    }
+    out.close();
 }
 
 double Trainer::cal_gradients(int i) {

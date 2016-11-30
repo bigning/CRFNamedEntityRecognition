@@ -1,2 +1,3 @@
 g++ -O3 feature_extractor.cpp util.cpp feature_selection.cpp -o feature_selection.bin
 g++ -O3 train.cpp util.cpp feature_extractor.cpp -o train.bin
+g++ -O3 predictor.cpp feature_extractor.cpp util.cpp -o predictor.bin

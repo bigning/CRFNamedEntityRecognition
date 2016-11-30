@@ -1,11 +1,11 @@
 import sys,os
 
-train_data_path = '../../data/ner/eng.train'
+train_data_path = '../../data/ner/eng.testb'
 train_f = open(train_data_path, 'r')
 train_lines = train_f.readlines()
 train_f.close()
 
-new_train_data_path = '../../data/ner/eng.train.new'
+new_train_data_path = '../../data/ner/eng.testb.new'
 new_train_f = open(new_train_data_path, 'w')
 
 previous_label = ''

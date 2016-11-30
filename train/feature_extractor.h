@@ -12,11 +12,11 @@ public:
     FeatureExtractor();
     void load_words();
     void load_selected_feature_index();
-    void extract_original_feature(int t, int y, int y_prev, vector<string>& input,
-            vector<int>& feature);
+    void extract_original_feature(int t, int y, int y_prev, vector<string>& input);
     // 1. feature selection 2. convert to sparse vector
-    void extract_feature(int t, int y, int y_prev, vector<string>& input,
-            vector<int>& feature);
+    vector<int> extract_feature(int t, int y, int y_prev, vector<string>& input);
+    void extract_features(vector<std::string>& data,
+            vector<vector<vector<SparseVector> > >& features);
     void test_extract_feature();
 
     /*
@@ -37,6 +37,7 @@ public:
 
     int selected_feature_size() {return selected_feature_size_;}
     const std::map<std::string, int>& label_map() { return label_map_;}
+    int label_num() { return label_num_; }
 
 private:
     std::string train_data_filename_; 
@@ -54,5 +55,8 @@ private:
     std::map<std::string, int> word2ind_;
     int dict_size_;
     
+    int* original_feature_;
+    int original_feature_size_;
+    int non_zero_num_;
     //
 };
