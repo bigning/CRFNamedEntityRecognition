@@ -9,6 +9,29 @@
 
 using namespace std;
 
+FeatureExtractor::FeatureExtractor(std::string& words_file,
+        std::string& selected_feature_file) {
+    lexicon_filename_ = words_file;
+    selected_feature_ind_save_filename = selected_feature_file;
+
+    label_map_["O"] = 0;
+    label_map_["B-PER"] = 1;
+    label_map_["I-PER"] = 2;
+    label_map_["B-LOC"] = 3;
+    label_map_["I-LOC"] = 4;
+    label_map_["B-ORG"] = 5;
+    label_map_["I-ORG"] = 6;
+    label_map_["B-MISC"] = 7;
+    label_map_["I-MISC"] = 8;
+
+    label_num_ = 9;
+
+    load_words();
+    load_selected_feature_index();
+
+    original_feature_ = NULL;
+}
+
 FeatureExtractor::FeatureExtractor() {
     train_data_filename_ = "../../data/ner/eng.train.new";
     lexicon_filename_ = "../../data/intermedia_data/words.txt";

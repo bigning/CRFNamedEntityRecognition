@@ -9,7 +9,9 @@ using std::vector;
 
 class Predictor {
 public:
-    Predictor(std::string& model);
+    Predictor(std::string& model,
+        std::string words_file="../../data/intermedia_data/words.txt", 
+        std::string selected_feature_file="../../data/intermedia_data/feature_selection.data");
     void load_model();
     std::vector<std::string> predict(std::string input);
     void cal_log_lambda(vector<vector<double> >& log_lambda);

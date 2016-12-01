@@ -10,6 +10,7 @@ using namespace std;
 class FeatureExtractor {
 public:
     FeatureExtractor();
+    FeatureExtractor(std::string& words_file, std::string& selected_feature_file);
     void load_words();
     void load_selected_feature_index();
     void extract_original_feature(int t, int y, int y_prev, vector<string>& input);

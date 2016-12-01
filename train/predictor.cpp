@@ -6,7 +6,9 @@
 
 using std::vector;
 
-Predictor::Predictor(std::string& model) {
+Predictor::Predictor(std::string& model,
+        std::string words_file, 
+        std::string selected_feature_file) {
     //model_filename_ = "../../data/intermedia_data/model.data";
     model_filename_ = model;
 
@@ -20,11 +22,12 @@ Predictor::Predictor(std::string& model) {
     label_to_tag_[7] = "B-MISC";
     label_to_tag_[8] = "I-MISC";
 
+    p_feature_extractor_ = new FeatureExtractor(words_file, selected_feature_file);
+
     load_model();
 }
 
 void Predictor::load_model() {
-    p_feature_extractor_ = new FeatureExtractor();
 
     std::ifstream model_file(model_filename_.c_str());
     weights_ = std::vector<double>(p_feature_extractor_->selected_feature_size());
@@ -151,10 +154,13 @@ void Predictor::batch_predict(const std::string& input_filename) {
 
 void predict_for_php(int argc, char* argv[]) {
     std::string model = argv[2];
-    Predictor* p_predictor = new Predictor(model);
+    std::string words_file = argv[3];
+    std::string selected_feature_file = argv[4];
+    Predictor* p_predictor = new Predictor(model, words_file, selected_feature_file);
+    
     std::string input;
     std::string special_chars = ".,()\"'-:$/?;[]!";
-    for (int i = 3; i < argc; i++) {
+    for (int i = 5; i < argc; i++) {
         bool ini_special = false;
         bool end_special = false;
         std::string original_word = argv[i];
@@ -203,8 +209,8 @@ int main(int argc, char* argv[]) {
     // batch test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189
     // train/testa/testb
     // php test: ./predictor php model_file input(I am from China.)
-    std::string help_str = "./predictor mode model (input) \nsingle test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189\nbatch test: ./predictor 1 ../../data/intermedia_data/model.data.baseline.8189 train/testa/testb";
-    if (argc >= 4) {
+    std::string help_str = "./predictor mode model (input) \nsingle test: ./predictor 0 ../../data/intermedia_data/model.data.baseline.8189\nbatch test: ./predictor 1 ../../data/intermedia_data/model.data.baseline.8189 train/testa/testb\nphp test: ./predictor php model words_file selected_feature_file input(I am from China.)";
+    if (argc >= 6) {
         std::string mode = argv[1];
         if (mode == "php") {
             predict_for_php(argc, argv);
@@ -241,6 +247,7 @@ int main(int argc, char* argv[]) {
         std::string data_str = argv[3];
         std::string test_data_path = "../../data/ner/eng." + data_str + ".new";
         p_predictor->batch_predict(test_data_path);
+        return 0;
     }
     std::cout << help_str << std::endl;
     return 0;
